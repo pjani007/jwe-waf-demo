@@ -1,0 +1,12 @@
+{
+  "name": "jwe_decrypt",
+  "version": "1.0.0",
+  "description": "RFC 7516 JWE compact decryption for BIG-IP iRules LX. Zero dependencies by design.",
+  "main": "index.js",
+  "dependencies": {},
+  "engines": {
+    "comment": "Node is whatever the TMOS ILX runtime provides. RSA-OAEP-256 needs >=12; profiles A and B work on anything.",
+    "node": ">=6"
+  },
+  "private": true
+}

@@ -1,0 +1,102 @@
+{
+  "class": "AS3",
+  "action": "deploy",
+  "persist": true,
+  "declaration": {
+    "class": "ADC",
+    "schemaVersion": "3.45.0",
+    "id": "jwe-waf-demo",
+    "label": "JWE decryption for WAF inspection",
+    "remark": "iRules and the WAF policy are INJECTED by tools/as3_submit.py from bigip/irules/*.tcl and bigip/waf/jwe-demo-policy.json. Do not paste them here by hand - the __PLACEHOLDER__ tokens are substituted at submit time so the .tcl files stay the single source of truth.",
+
+    "jwe_lab": {
+      "class": "Tenant",
+
+      "jwe_app": {
+        "class": "Application",
+        "template": "generic",
+
+        "pool_api": {
+          "class": "Pool",
+          "monitors": ["http"],
+          "members": [
+            {
+              "servicePort": 8080,
+              "serverAddresses": ["10.1.10.20"]
+            }
+          ]
+        },
+
+        "waf_policy": {
+          "class": "WAF_Policy",
+          "policy": "__WAF_POLICY__",
+          "ignoreChanges": false
+        },
+
+        "irule_jwe_decrypt": {
+          "class": "iRule",
+          "iRule": { "base64": "__IRULE_JWE_DECRYPT_B64__" }
+        },
+
+        "irule_jwe_single": {
+          "class": "iRule",
+          "iRule": { "base64": "__IRULE_JWE_SINGLE_B64__" }
+        },
+
+        "vs_waf_internal": {
+          "class": "Service_HTTP",
+          "remark": "Inner VS of the chain. ASM lives HERE and nowhere else on this path, so it inspects an ordinary plaintext JSON POST with no HTTP::collect in its flow.",
+          "virtualAddresses": ["10.1.10.241"],
+          "virtualPort": 8080,
+          "pool": "pool_api",
+          "policyWAF": { "use": "waf_policy" },
+          "snat": "auto"
+        },
+
+        "vs_jwe_ingress": {
+          "class": "Service_HTTPS",
+          "remark": "THE FIX. Decrypts, rewrites Content-Type, chains to vs_waf_internal. Deliberately has NO WAF policy of its own.",
+          "virtualAddresses": ["10.1.10.40"],
+          "virtualPort": 443,
+          "serverTLS": { "bigip": "/Common/clientssl" },
+          "iRules": ["irule_jwe_decrypt"],
+          "snat": "auto"
+        },
+
+        "vs_jwe_blind": {
+          "class": "Service_HTTPS",
+          "remark": "THE BLIND SPOT. WAF policy attached, no decryption. An attack inside a JWE must reach the backend with a 200 here - that is the gap the lab exists to show.",
+          "virtualAddresses": ["10.1.10.41"],
+          "virtualPort": 443,
+          "serverTLS": { "bigip": "/Common/clientssl" },
+          "pool": "pool_api",
+          "policyWAF": { "use": "waf_policy" },
+          "snat": "auto"
+        },
+
+        "vs_plain_waf": {
+          "class": "Service_HTTPS",
+          "remark": "CONTROL. Plaintext plus WAF. Proves the policy is actually armed, so a block on vs_jwe_ingress cannot be dismissed as coincidence and a 200 on vs_jwe_blind cannot be blamed on a dead policy.",
+          "virtualAddresses": ["10.1.10.42"],
+          "virtualPort": 443,
+          "serverTLS": { "bigip": "/Common/clientssl" },
+          "pool": "pool_api",
+          "policyWAF": { "use": "waf_policy" },
+          "snat": "auto"
+        },
+
+        "vs_jwe_single": {
+          "class": "Service_HTTPS",
+          "remark": "EXPERIMENT. Decrypt and WAF on the SAME VS, to measure the K000158872 HTTP::collect/ASM interaction instead of assuming it. Not the production path.",
+          "virtualAddresses": ["10.1.10.43"],
+          "virtualPort": 443,
+          "serverTLS": { "bigip": "/Common/clientssl" },
+          "pool": "pool_api",
+          "policyWAF": { "use": "waf_policy" },
+          "iRules": ["irule_jwe_single"],
+          "snat": "auto"
+        }
+      }
+    }
+  }
+}

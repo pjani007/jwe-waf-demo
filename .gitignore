@@ -1,0 +1,24 @@
+# Secrets — never commit
+.env
+!.env.example
+
+# Generated key material. The private PEMs MUST NOT be committed.
+# jwks.json is public and safe to publish, but is regenerated per lab, so ignore it too.
+keys/
+!keys/.gitkeep
+
+# Python
+*.pyc
+__pycache__/
+.venv/
+.pytest_cache/
+
+# Node (ILX workspace deps are vendored deliberately — see docs/ARCHITECTURE.md)
+node_modules/
+
+# Test output
+results/
+*.log
+
+# Timestamped .env backups contain secrets
+.env.backup-*

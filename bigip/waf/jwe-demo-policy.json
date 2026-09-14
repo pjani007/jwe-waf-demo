@@ -1,0 +1,64 @@
+{
+  "policy": {
+    "name": "jwe-demo-policy",
+    "description": "JWE-WAF lab. Blocking, signatures NOT staged, JSON parsed as parameters.",
+    "template": { "name": "POLICY_TEMPLATE_RAPID_DEPLOYMENT" },
+    "applicationLanguage": "utf-8",
+
+    "enforcementMode": "blocking",
+
+    "signature-settings": {
+      "signatureStaging": false,
+      "placeSignaturesInStaging": false,
+      "attackSignatureFalsePositiveMode": "disabled"
+    },
+
+    "json-profiles": [
+      {
+        "name": "jwe_lab_json",
+        "description": "Parses the decrypted body so enforcement is parameter-level, not just raw-body signature matching.",
+        "parseParameters": true,
+        "handleJsonValuesAsParameters": true,
+        "tolerateJsonParsingWarnings": false,
+        "defenseAttributes": {
+          "maximumArrayLength": 1000,
+          "maximumStructureDepth": 20,
+          "maximumTotalLengthOfJSONData": 1000000,
+          "maximumValueLength": 10000,
+          "tolerateJSONParsingWarnings": false
+        }
+      }
+    ],
+
+    "urls": [
+      {
+        "name": "/api/v1/orders",
+        "method": "POST",
+        "protocol": "https",
+        "type": "explicit",
+        "contentProfiles": [
+          { "headerName": "Content-Type", "headerValue": "application/json", "type": "json", "contentProfile": { "name": "jwe_lab_json" } }
+        ]
+      },
+      {
+        "name": "/api/v1/echo",
+        "method": "POST",
+        "protocol": "https",
+        "type": "explicit",
+        "contentProfiles": [
+          { "headerName": "Content-Type", "headerValue": "application/json", "type": "json", "contentProfile": { "name": "jwe_lab_json" } }
+        ]
+      }
+    ],
+
+    "blocking-settings": {
+      "violations": [
+        { "name": "VIOL_ATTACK_SIGNATURE",  "alarm": true, "block": true },
+        { "name": "VIOL_JSON_MALFORMED",    "alarm": true, "block": true },
+        { "name": "VIOL_JSON_FORMAT",       "alarm": true, "block": true },
+        { "name": "VIOL_EVASION",           "alarm": true, "block": true },
+        { "name": "VIOL_PARAMETER_VALUE_METACHAR", "alarm": true, "block": true }
+      ]
+    }
+  }
+}

@@ -1,0 +1,105 @@
+# Test matrix for the JWE-WAF lab.
+#
+# OUTCOME VOCABULARY
+#   allow    2xx expected. Request reached the backend.
+#   block    403 WITH an ASM support ID. The WAF blocked it.
+#   reject   4xx/5xx from the iRule WITHOUT a support ID. The decryptor refused
+#            it before the WAF was ever involved. Distinct from `block` on
+#            purpose — conflating the two hides which control actually fired.
+#   measure  Record the result, assert nothing. Used only for the single-VS
+#            experiment, whose answer is the thing being measured.
+#   n/a      Target not applicable to this case.
+#
+# THE CENTRAL CLAIM of the whole lab is one row: `sqli` must be
+#   chain=block  and  blind=allow
+# Same ciphertext, same policy, opposite outcome. If that row does not hold,
+# nothing else in here matters.
+
+targets:
+  chain:
+    env: VS_JWE_INGRESS
+    jwe: true
+    label: "decrypt -> WAF chain (the fix)"
+  blind:
+    env: VS_JWE_BLIND
+    jwe: true
+    label: "WAF only, no decrypt (the blind spot)"
+  plain:
+    env: VS_PLAIN_WAF
+    jwe: false
+    label: "plaintext + WAF (policy is armed)"
+  single:
+    env: VS_JWE_SINGLE
+    jwe: true
+    label: "decrypt + WAF, same VS (K000158872 experiment)"
+
+path: /api/v1/orders
+
+cases:
+  # ── baseline ──────────────────────────────────────────────────────────────
+  - name: clean
+    payload: clean
+    note: "Nothing malicious. Everything must pass, or later blocks prove nothing."
+    expect: { chain: allow, blind: allow, plain: allow, single: measure }
+
+  # ── the blind spot: attacks inside the ciphertext ─────────────────────────
+  - name: sqli
+    payload: sqli
+    note: "THE CENTRAL CLAIM. Identical JWE, opposite outcomes."
+    expect: { chain: block, blind: allow, plain: block, single: measure }
+
+  - name: sqli_union
+    payload: sqli_union
+    expect: { chain: block, blind: allow, plain: block, single: measure }
+
+  - name: xss
+    payload: xss
+    expect: { chain: block, blind: allow, plain: block, single: measure }
+
+  - name: cmdi
+    payload: cmdi
+    expect: { chain: block, blind: allow, plain: block, single: measure }
+
+  - name: traversal
+    payload: traversal
+    expect: { chain: block, blind: allow, plain: block, single: measure }
+
+  # ── decryptor failure modes: reject, never silently forward ───────────────
+  - name: unknown_kid
+    case: unknown_kid
+    note: "kid the BIG-IP keyring has never heard of."
+    expect: { chain: reject, blind: allow, plain: n/a, single: measure }
+
+  - name: wrong_key_material
+    case: wrong_key_material
+    note: "Advertises a trusted kid, encrypted to the decoy key."
+    expect: { chain: reject, blind: allow, plain: n/a, single: measure }
+
+  - name: alg_mismatch
+    case: alg_mismatch
+    note: "Header alg does not match the alg the kid is bound to."
+    expect: { chain: reject, blind: allow, plain: n/a, single: measure }
+
+  - name: tampered_tag
+    case: tampered_tag
+    note: "One bit flipped in the GCM auth tag."
+    expect: { chain: reject, blind: allow, plain: n/a, single: measure }
+
+  - name: tampered_ciphertext
+    case: tampered_ciphertext
+    expect: { chain: reject, blind: allow, plain: n/a, single: measure }
+
+  - name: malformed_jwe
+    case: malformed_jwe
+    note: "Four segments instead of five."
+    expect: { chain: reject, blind: allow, plain: n/a, single: measure }
+
+  # ── the size ceiling is itself a security control ─────────────────────────
+  - name: oversize
+    case: oversize
+    note: >
+      Larger than the 65536-byte ILX::call cap, so it CANNOT be decrypted and
+      therefore cannot be inspected. Enforced in the iRule, not in Node - which
+      is why this assertion only means anything against a real VS. With
+      JWE_FAIL_MODE=open this becomes `allow`, and that is a WAF bypass.
+    expect: { chain: reject, blind: allow, plain: n/a, single: measure }
